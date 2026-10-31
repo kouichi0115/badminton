@@ -9,6 +9,7 @@ import { fmtMinutes, parseHHMM } from '../logic/util';
 import { callText } from '../logic/call';
 import { fillTemplate } from '../logic/speech';
 import type { AppState, Match } from '../types';
+import { RpScoreSheet, type RpSheetData, type RpSide } from '../print/RpScoreSheet';
 
 type Doc = 'bracket' | 'progress' | 'timetable' | 'scoresheet' | 'results' | 'roster' | 'fee' | 'namecard' | 'certificate' | 'calls';
 
@@ -50,8 +51,9 @@ export default function PrintPage() {
   const [onlyReady, setOnlyReady] = useState(true);
   const [depth, setDepth] = useState(3);
   const [nc, setNc] = useState({ vertical: false, kana: true, aff: true });
+  const [ssFormat, setSsFormat] = useState<'rp' | 'simple'>('rp');
 
-  const landscape = doc === 'namecard' || (doc === 'certificate' && s.tournament.certificate.orientation === 'horizontal') || doc === 'timetable';
+  const landscape = doc === 'namecard' || (doc === 'certificate' && s.tournament.certificate.orientation === 'horizontal') || doc === 'timetable' || (doc === 'scoresheet' && ssFormat === 'rp');
   const usesEvent = ['bracket', 'roster', 'namecard', 'certificate', 'results', 'progress', 'scoresheet', 'calls'].includes(doc);
   const usesRange = ['scoresheet', 'calls', 'progress'].includes(doc);
   const events = eventId ? s.events.filter((e) => e.id === eventId) : s.events;
@@ -77,6 +79,12 @@ export default function PrintPage() {
               <NumInput value={to} style={{ width: 70 }} onChange={setTo} />
               <span className="muted small">（0=最後まで）</span>
             </>
+          )}
+          {doc === 'scoresheet' && (
+            <select value={ssFormat} onChange={(e) => setSsFormat(e.target.value as 'rp' | 'simple')} aria-label="審判用紙の書式">
+              <option value="rp">標準（ラリーポイント・A4横 1枚1試合）</option>
+              <option value="simple">簡易（A4縦 2試合）</option>
+            </select>
           )}
           {(doc === 'scoresheet' || doc === 'calls') && (
             <label className="row small" style={{ gap: 4 }}>
@@ -121,7 +129,12 @@ export default function PrintPage() {
         {doc === 'bracket' && events.map((ev) => <BracketSheet key={ev.id} s={s} eventId={ev.id} />)}
         {doc === 'progress' && <ProgressSheet s={s} filter={rangeFilter} />}
         {doc === 'timetable' && <TimetableSheet s={s} />}
-        {doc === 'scoresheet' && <ScoreSheets s={s} matches={s.matches.filter((m) => rangeFilter(m) && (!onlyReady || (m.a && m.b && m.status !== 'done')))} />}
+        {doc === 'scoresheet' &&
+          (ssFormat === 'rp' ? (
+            <RpSheets s={s} matches={s.matches.filter((m) => rangeFilter(m) && (!onlyReady || (m.a && m.b && m.status !== 'done')))} />
+          ) : (
+            <ScoreSheets s={s} matches={s.matches.filter((m) => rangeFilter(m) && (!onlyReady || (m.a && m.b && m.status !== 'done')))} />
+          ))}
         {doc === 'calls' && <CallsSheet s={s} matches={s.matches.filter((m) => rangeFilter(m) && (!onlyReady || (m.a && m.b && m.status !== 'done')))} />}
         {doc === 'results' && <ResultsSheet s={s} eventIds={events.map((e) => e.id)} />}
         {doc === 'roster' && events.map((ev) => <RosterSheet key={ev.id} s={s} eventId={ev.id} />)}
@@ -286,6 +299,58 @@ function TimetableSheet({ s }: { s: AppState }) {
           </table>
           <p style={{ fontSize: '8pt' }}>※ 各種目の目安時間と休憩時間から計算した見込みです。実際の進行とは異なります。</p>
         </Sheet>
+      ))}
+    </>
+  );
+}
+
+/** 開催日を「2026年10月31日」の形に */
+function jpDate(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+/** 標準様式（ラリーポイント用・A4横）の審判用紙。団体戦は各試合ごとに1枚 */
+function RpSheets({ s, matches }: { s: AppState; matches: Match[] }) {
+  const list = [...matches].sort((a, b) => a.number - b.number);
+  if (!list.length) return <Empty>対象の試合がありません。</Empty>;
+  const pm = playerMap(s);
+  const plan = new Map(simulate(s, parseHHMM(s.tournament.startTime)).map((p) => [p.matchId, p]));
+  const sheets: { key: string; d: RpSheetData }[] = [];
+  for (const m of list) {
+    const ev = s.events.find((e) => e.id === m.eventId)!;
+    const A = entryById(s, m.a);
+    const B = entryById(s, m.b);
+    const p = plan.get(m.id);
+    const base = {
+      tournament: s.tournament.name,
+      matchNo: m.number ? String(m.number) : '',
+      court: m.court ? String(m.court) : '',
+      date: jpDate(s.tournament.date),
+      plannedStart: p ? fmtMinutes(p.start) : '',
+      eventLabel: `${ev.name} ${matchRoundLabel(s, m)}`,
+      organizer: s.tournament.organizer,
+    };
+    if (ev.type === 'team') {
+      const team = (e: typeof A): RpSide => ({ names: [], kanas: [], affiliation: entryName(s, e, pm) });
+      ev.rubbers.forEach((r, i) =>
+        sheets.push({ key: `${m.id}-${i}`, d: { ...base, teamOrder: r.label, doubles: r.type === 'doubles', a: team(A), b: team(B) } }),
+      );
+    } else {
+      const side = (e: typeof A): RpSide => ({
+        names: (e?.playerIds ?? []).map((id) => pm.get(id)?.name ?? ''),
+        kanas: (e?.playerIds ?? []).map((id) => pm.get(id)?.kana ?? ''),
+        affiliation: entryAffiliation(s, e, pm),
+      });
+      sheets.push({ key: m.id, d: { ...base, teamOrder: '', doubles: ev.type === 'doubles', a: side(A), b: side(B) } });
+    }
+  }
+  return (
+    <>
+      {sheets.map((x) => (
+        <div key={x.key} className="sheet a4l bare">
+          <RpScoreSheet d={x.d} />
+        </div>
       ))}
     </>
   );

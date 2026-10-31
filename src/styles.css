@@ -195,3 +195,5 @@ svg.bracket text { font-family: inherit; }
 .print-bracket svg { width: 100%; height: auto; }
 .cert.vertical > div { margin-left: 9mm; }
 .cert.vertical .c-org { margin-top: auto; }
+.sheet.bare { padding: 0; height: 210mm; overflow: hidden; }
+.sheet.bare svg { display: block; }
