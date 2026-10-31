@@ -127,3 +127,31 @@ export function sameKeyMeetings(slots: (string | null)[], keyOf: (id: string) =>
   }
   return out.sort((x, y) => x.round - y.round);
 }
+
+/** リーグのグループ分け：シードは蛇行で、他は同じ所属が同じグループに入らないよう分散 */
+export function assignGroups(items: DrawItem[], groupCount: number, seedValue = Date.now()): string[][] {
+  const rand = rng(seedValue);
+  const n = Math.max(1, groupCount);
+  const groups: DrawItem[][] = Array.from({ length: n }, () => []);
+  const seeded = items.filter((i) => i.seed > 0).sort((a, b) => a.seed - b.seed);
+  seeded.forEach((it, i) => {
+    const row = Math.floor(i / n);
+    const g = row % 2 === 0 ? i % n : n - 1 - (i % n);
+    groups[g].push(it);
+  });
+  const rest = shuffle(items.filter((i) => !(i.seed > 0)), rand);
+  const keyCount = new Map<string, number>();
+  rest.forEach((i) => keyCount.set(i.key, (keyCount.get(i.key) ?? 0) + 1));
+  rest.sort((a, b) => (keyCount.get(b.key) ?? 0) - (keyCount.get(a.key) ?? 0));
+  for (const it of rest) {
+    let best = 0;
+    let bestScore = Infinity;
+    groups.forEach((g, gi) => {
+      const same = it.key ? g.filter((x) => x.key === it.key).length : 0;
+      const score = same * 1000 + g.length;
+      if (score < bestScore) (bestScore = score, (best = gi));
+    });
+    groups[best].push(it);
+  }
+  return groups.map((g) => g.map((i) => i.id));
+}

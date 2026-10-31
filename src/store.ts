@@ -50,7 +50,9 @@ export function getState() {
 }
 
 export function update(fn: (d: Draft<AppState>) => void) {
-  const next = produce(state, fn);
+  const next = produce(state, (d) => {
+    fn(d);
+  });
   if (next === state) return;
   past = [...past.slice(-MAX_UNDO + 1), state];
   future = [];
