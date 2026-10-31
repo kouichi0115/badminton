@@ -2,7 +2,7 @@ name: GitHub Pages に公開
 
 on:
   push:
-    branches: [main]
+    branches: [main, ccr-84162cc0-86ujp5]
   workflow_dispatch:
 
 permissions:
@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: actions/configure-pages@v5
       - run: npm ci
       - run: npm test
       - run: npm run build
