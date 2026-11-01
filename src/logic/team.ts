@@ -36,3 +36,29 @@ export function parseOrder(text: string): RubberDef[] {
 export function orderText(defs: RubberDef[]): string {
   return defs.map((d) => (d.type === 'doubles' ? '複' : '単')).join(',');
 }
+
+/** 各チームのオーダーが全試合分そろっているか */
+export function orderStatus(rubbers: Rubber[]): { a: boolean; b: boolean } {
+  const full = (r: Rubber, side: Side) => {
+    const need = r.type === 'doubles' ? 2 : 1;
+    return r[side].filter(Boolean).length >= need;
+  };
+  return {
+    a: rubbers.length > 0 && rubbers.every((r) => full(r, 'a')),
+    b: rubbers.length > 0 && rubbers.every((r) => full(r, 'b')),
+  };
+}
+
+/** オーダーの注意点（同じ選手の重複など）。保存は止めない */
+export function orderWarnings(rubbers: Rubber[], side: Side, nameOf: (id: string) => string): string[] {
+  const out: string[] = [];
+  const count = { singles: new Map<string, number>(), doubles: new Map<string, number>() };
+  for (const r of rubbers) {
+    const ids = r[side].filter(Boolean);
+    if (r.type === 'doubles' && ids.length === 2 && ids[0] === ids[1]) out.push(`${r.label}：同じ選手が2回選ばれています（${nameOf(ids[0])}）`);
+    for (const id of new Set(ids)) count[r.type].set(id, (count[r.type].get(id) ?? 0) + 1);
+  }
+  for (const type of ['singles', 'doubles'] as const)
+    for (const [id, c] of count[type]) if (c > 1) out.push(`${nameOf(id)} が${type === 'singles' ? 'シングルス' : 'ダブルス'}に${c}回入っています`);
+  return out;
+}

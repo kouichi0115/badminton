@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAppState } from '../store';
 import { Empty } from '../components/common';
 import { ScoreDialog } from '../components/ScoreDialog';
+import { OrderDialog } from '../components/OrderDialog';
+import { orderStatus } from '../logic/team';
 import { callMatch, returnToWaiting, startMatch } from '../actions';
 import { candidates, freeCourts, simulate } from '../logic/scheduler';
 import { entryAffiliation, entryById, entryName, matchRoundLabel, playerMap } from '../logic/names';
@@ -31,6 +33,7 @@ export default function ProgressPage() {
   const s = useAppState();
   const now = useNow();
   const [editing, setEditing] = useState<string | null>(null);
+  const [ordering, setOrdering] = useState<string | null>(null);
   const [autoSpeak, setAutoSpeak] = useState(loadAutoSpeak);
   const [search, setSearch] = useState('');
   const [pick, setPick] = useState<Record<number, string>>({});
@@ -58,6 +61,7 @@ export default function ProgressPage() {
   };
 
   const editingMatch = s.matches.find((m) => m.id === editing);
+  const orderingMatch = s.matches.find((m) => m.id === ordering);
   const found = search ? s.matches.find((m) => String(m.number) === search.trim()) : undefined;
 
   const vs = (m: Match) => (
@@ -72,6 +76,21 @@ export default function ProgressPage() {
     </div>
   );
   const evName = (m: Match) => s.events.find((e) => e.id === m.eventId)?.name ?? '';
+  const isTeam = (m: Match) => s.events.find((e) => e.id === m.eventId)?.type === 'team';
+  const orderTag = (m: Match) => {
+    const st = orderStatus(m.rubbers);
+    if (st.a && st.b) return <span className="tag ok">オーダー入力済</span>;
+    if (st.a || st.b) return <span className="tag warn">オーダー片方のみ</span>;
+    return <span className="tag danger">オーダー未入力</span>;
+  };
+  const orderButton = (m: Match) => (
+    <button className="secondary small" onClick={() => setOrdering(m.id)}>
+      オーダー
+    </button>
+  );
+  const teamUpcoming = s.matches
+    .filter((m) => isTeam(m) && m.a && m.b && m.status !== 'done' && m.status !== 'bye')
+    .sort((x, y) => x.number - y.number);
 
   return (
     <>
@@ -128,6 +147,12 @@ export default function ProgressPage() {
                   No.{m.number} {evName(m)} {matchRoundLabel(s, m)}
                 </div>
                 {vs(m)}
+                {isTeam(m) && (
+                  <div className="row small" style={{ gap: 6 }}>
+                    {orderTag(m)}
+                    {orderButton(m)}
+                  </div>
+                )}
                 <div className="row small">
                   <span className="elapsed">{since ? `${Math.max(0, Math.floor((now - since) / 60000))}分経過` : ''}</span>
                   <span className="spacer" />
@@ -170,6 +195,12 @@ export default function ProgressPage() {
                     ))}
                   </select>
                   {vs(chosen.match)}
+                  {isTeam(chosen.match) && (
+                    <div className="row small" style={{ gap: 6 }}>
+                      {orderTag(chosen.match)}
+                      {orderButton(chosen.match)}
+                    </div>
+                  )}
                   {chosen.restLeft > 0 && <span className="tag warn">休憩あと{chosen.restLeft}分</span>}
                   <div className="row">
                     <button onClick={() => doCall(chosen.match, c)}>コール</button>
@@ -182,6 +213,37 @@ export default function ProgressPage() {
           );
         })}
       </section>
+
+      {teamUpcoming.length > 0 && (
+        <section className="panel">
+          <h3>団体戦のオーダー</h3>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            試合前に各チームのオーダーを入力すると、審判用紙・オーダー用紙に選手名が印字されます。
+          </p>
+          <div className="table-wrap">
+            <table className="list">
+              <tbody>
+                {teamUpcoming.map((m) => {
+                  const st = orderStatus(m.rubbers);
+                  return (
+                    <tr key={m.id}>
+                      <td className="num">No.{m.number}</td>
+                      <td>
+                        {evName(m)} {matchRoundLabel(s, m)}
+                      </td>
+                      <td>
+                        {entryName(s, entryById(s, m.a), pm)} {st.a ? '✓' : ''} <span className="muted">対</span> {entryName(s, entryById(s, m.b), pm)} {st.b ? '✓' : ''}
+                      </td>
+                      <td>{orderTag(m)}</td>
+                      <td>{orderButton(m)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section className="panel">
         <h3>待機中の試合</h3>
@@ -210,7 +272,8 @@ export default function ProgressPage() {
                       {entryName(s, entryById(s, m.a), pm)} <span className="muted">対</span> {entryName(s, entryById(s, m.b), pm)}
                     </td>
                     <td>
-                      {busy ? <span className="tag danger">出場中の選手あり</span> : restLeft ? <span className="tag warn">休憩あと{restLeft}分</span> : <span className="tag ok">入れます</span>}
+                      {busy ? <span className="tag danger">出場中の選手あり</span> : restLeft ? <span className="tag warn">休憩あと{restLeft}分</span> : <span className="tag ok">入れます</span>}{' '}
+                      {isTeam(m) && orderTag(m)}
                     </td>
                     <td>
                       <div className="row" style={{ flexWrap: 'nowrap', gap: 4 }}>
@@ -228,6 +291,7 @@ export default function ProgressPage() {
                             ))}
                           </select>
                         )}
+                        {isTeam(m) && orderButton(m)}
                         <button className="secondary small" onClick={() => setEditing(m.id)}>
                           結果
                         </button>
@@ -244,6 +308,7 @@ export default function ProgressPage() {
       <RecentResults state={s} onOpen={setEditing} />
 
       {editingMatch && <ScoreDialog key={editingMatch.id} state={s} match={editingMatch} onClose={() => setEditing(null)} />}
+      {orderingMatch && <OrderDialog key={orderingMatch.id} state={s} match={orderingMatch} onClose={() => setOrdering(null)} />}
     </>
   );
 }

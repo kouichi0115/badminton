@@ -197,3 +197,12 @@ svg.bracket text { font-family: inherit; }
 .cert.vertical .c-org { margin-top: auto; }
 .sheet.bare { padding: 0; height: 210mm; overflow: hidden; }
 .sheet.bare svg { display: block; }
+.order-form { height: 128mm; display: flex; flex-direction: column; gap: 2.5mm; font-size: 10pt; }
+.order-form h1 { font-size: 17pt; letter-spacing: .3em; margin: 0; }
+.order-form .of-head { display: flex; justify-content: space-between; font-size: 10pt; }
+.order-form .of-body { display: flex; gap: 4mm; flex: 1; min-height: 0; }
+.order-form .of-order { flex: 1; }
+.order-form .of-order td, .order-form .of-order th { height: 8.5mm; }
+.order-form .of-members { width: 42mm; border: 1px solid #000; padding: 2mm; font-size: 9pt; line-height: 1.5; overflow: hidden; }
+.order-form .of-sign { display: flex; justify-content: space-between; font-size: 11pt; padding: 0 2mm; }
+.cut-line { text-align: center; color: #666; font-size: 9pt; margin: 3mm 0; white-space: nowrap; overflow: hidden; }

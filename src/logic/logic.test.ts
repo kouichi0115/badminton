@@ -3,7 +3,7 @@ import { gameWinner, matchWinner, parseScore } from './score';
 import { autoDraw, seedOrder, sameKeyMeetings } from './draw';
 import { applyResult, buildKnockout, buildLeague, clearResult, numberMatches, roundRobin } from './bracket';
 import { standings } from './league';
-import { teamResult, parseOrder } from './team';
+import { teamResult, parseOrder, orderStatus, orderWarnings } from './team';
 import { parseCSV, toCSV } from './csv';
 import { defaultState, newEvent } from './defaults';
 import { candidates, simulate } from './scheduler';
@@ -121,6 +121,20 @@ describe('team', () => {
     const r = teamResult(rubbers, R);
     expect(r.winner).toBe('a');
     expect(r.decidedAt).toBe(1);
+  });
+});
+
+describe('team order', () => {
+  it('tracks order status and warns on duplicates', () => {
+    const rubbers = parseOrder('複,単,複').map((o) => ({ ...o, a: [] as string[], b: [] as string[], games: [] as [number, number][], finish: 'normal' as const }));
+    expect(orderStatus(rubbers)).toEqual({ a: false, b: false });
+    rubbers[0].a = ['p1', 'p2'];
+    rubbers[1].a = ['p3'];
+    rubbers[2].a = ['p1', 'p4'];
+    expect(orderStatus(rubbers)).toEqual({ a: true, b: false });
+    expect(orderWarnings(rubbers, 'a', (id) => id)).toEqual(['p1 がダブルスに2回入っています']);
+    rubbers[2].a = ['p4', 'p4'];
+    expect(orderWarnings(rubbers, 'a', (id) => id)[0]).toMatch(/同じ選手が2回/);
   });
 });
 

@@ -11,13 +11,14 @@ import { fillTemplate } from '../logic/speech';
 import type { AppState, Match } from '../types';
 import { RpScoreSheet, type RpSheetData, type RpSide } from '../print/RpScoreSheet';
 
-type Doc = 'bracket' | 'progress' | 'timetable' | 'scoresheet' | 'results' | 'roster' | 'fee' | 'namecard' | 'certificate' | 'calls';
+type Doc = 'bracket' | 'progress' | 'timetable' | 'scoresheet' | 'order' | 'results' | 'roster' | 'fee' | 'namecard' | 'certificate' | 'calls';
 
 const DOCS: { id: Doc; label: string }[] = [
   { id: 'bracket', label: '対戦表（トーナメント・リーグ）' },
   { id: 'progress', label: '進行表' },
   { id: 'timetable', label: 'タイムテーブル（コート別）' },
   { id: 'scoresheet', label: '審判用紙（スコアシート）' },
+  { id: 'order', label: '団体戦オーダー用紙' },
   { id: 'calls', label: '放送原稿' },
   { id: 'results', label: '大会結果報告' },
   { id: 'roster', label: '参加者名簿' },
@@ -54,8 +55,8 @@ export default function PrintPage() {
   const [ssFormat, setSsFormat] = useState<'rp' | 'simple'>('rp');
 
   const landscape = doc === 'namecard' || (doc === 'certificate' && s.tournament.certificate.orientation === 'horizontal') || doc === 'timetable' || (doc === 'scoresheet' && ssFormat === 'rp');
-  const usesEvent = ['bracket', 'roster', 'namecard', 'certificate', 'results', 'progress', 'scoresheet', 'calls'].includes(doc);
-  const usesRange = ['scoresheet', 'calls', 'progress'].includes(doc);
+  const usesEvent = ['bracket', 'roster', 'namecard', 'certificate', 'results', 'progress', 'scoresheet', 'calls', 'order'].includes(doc);
+  const usesRange = ['scoresheet', 'calls', 'progress', 'order'].includes(doc);
   const events = eventId ? s.events.filter((e) => e.id === eventId) : s.events;
   const rangeFilter = (m: Match) => m.status !== 'bye' && m.number >= from && (!to || m.number <= to) && (!eventId || m.eventId === eventId);
 
@@ -86,7 +87,7 @@ export default function PrintPage() {
               <option value="simple">簡易（A4縦 2試合）</option>
             </select>
           )}
-          {(doc === 'scoresheet' || doc === 'calls') && (
+          {(doc === 'scoresheet' || doc === 'calls' || doc === 'order') && (
             <label className="row small" style={{ gap: 4 }}>
               <input type="checkbox" checked={onlyReady} onChange={(e) => setOnlyReady(e.target.checked)} />
               対戦者が決まった未終了の試合のみ
@@ -135,6 +136,7 @@ export default function PrintPage() {
           ) : (
             <ScoreSheets s={s} matches={s.matches.filter((m) => rangeFilter(m) && (!onlyReady || (m.a && m.b && m.status !== 'done')))} />
           ))}
+        {doc === 'order' && <OrderSheets s={s} matches={s.matches.filter((m) => rangeFilter(m) && (!onlyReady || (m.a && m.b && m.status !== 'done')))} />}
         {doc === 'calls' && <CallsSheet s={s} matches={s.matches.filter((m) => rangeFilter(m) && (!onlyReady || (m.a && m.b && m.status !== 'done')))} />}
         {doc === 'results' && <ResultsSheet s={s} eventIds={events.map((e) => e.id)} />}
         {doc === 'roster' && events.map((ev) => <RosterSheet key={ev.id} s={s} eventId={ev.id} />)}
@@ -332,10 +334,15 @@ function RpSheets({ s, matches }: { s: AppState; matches: Match[] }) {
       organizer: s.tournament.organizer,
     };
     if (ev.type === 'team') {
-      const team = (e: typeof A): RpSide => ({ names: [], kanas: [], affiliation: entryName(s, e, pm) });
-      ev.rubbers.forEach((r, i) =>
-        sheets.push({ key: `${m.id}-${i}`, d: { ...base, teamOrder: r.label, doubles: r.type === 'doubles', a: team(A), b: team(B) } }),
-      );
+      const team = (e: typeof A, ids: string[]): RpSide => ({
+        names: ids.map((id) => pm.get(id)?.name ?? ''),
+        kanas: ids.map((id) => pm.get(id)?.kana ?? ''),
+        affiliation: entryName(s, e, pm),
+      });
+      ev.rubbers.forEach((r, i) => {
+        const ord = m.rubbers[i];
+        sheets.push({ key: `${m.id}-${i}`, d: { ...base, teamOrder: r.label, doubles: r.type === 'doubles', a: team(A, ord?.a ?? []), b: team(B, ord?.b ?? []) } });
+      });
     } else {
       const side = (e: typeof A): RpSide => ({
         names: (e?.playerIds ?? []).map((id) => pm.get(id)?.name ?? ''),
@@ -494,9 +501,9 @@ function TeamSheet({ s, m }: { s: AppState; m: Match }) {
           {ev.rubbers.map((r, i) => (
             <tr key={i} style={{ height: '13mm' }}>
               <td>{r.label}</td>
+              <td>{(m.rubbers[i]?.a ?? []).map((id) => pm.get(id)?.name).join('・')}</td>
               <td />
-              <td />
-              <td />
+              <td>{(m.rubbers[i]?.b ?? []).map((id) => pm.get(id)?.name).join('・')}</td>
               <td />
             </tr>
           ))}
@@ -763,5 +770,95 @@ function Certificates({ s, eventIds, depth }: { s: AppState; eventIds: string[];
         );
       })}
     </>
+  );
+}
+
+/** 団体戦オーダー用紙：A4縦に1試合分（上がチームA、下がチームB） */
+function OrderSheets({ s, matches }: { s: AppState; matches: Match[] }) {
+  const isTeam = (m: Match) => s.events.find((e) => e.id === m.eventId)?.type === 'team';
+  const list = matches.filter(isTeam).sort((a, b) => a.number - b.number);
+  if (!list.length) return <Empty>対象の団体戦の試合がありません。</Empty>;
+  return (
+    <>
+      {list.map((m) => (
+        <Sheet key={m.id}>
+          <OrderForm s={s} m={m} side="a" />
+          <div className="cut-line">✂ ･････････････････････････ 切り取り ･････････････････････････</div>
+          <OrderForm s={s} m={m} side="b" />
+        </Sheet>
+      ))}
+    </>
+  );
+}
+
+function OrderForm({ s, m, side }: { s: AppState; m: Match; side: 'a' | 'b' }) {
+  const ev = s.events.find((e) => e.id === m.eventId)!;
+  const pm = playerMap(s);
+  const me = entryById(s, m[side]);
+  const opp = entryById(s, m[side === 'a' ? 'b' : 'a']);
+  const members = me?.playerIds ?? [];
+  const numOf = (id: string) => members.indexOf(id) + 1;
+  return (
+    <div className="order-form">
+      <div className="of-head">
+        <span>{s.tournament.name}</span>
+        <span>
+          試合番号 No.{m.number}　第 {m.court ?? '　　'} コート
+        </span>
+      </div>
+      <h1>オーダー用紙</h1>
+      <table className="pt of-info">
+        <tbody>
+          <tr>
+            <th style={{ width: '18%' }}>種目</th>
+            <td colSpan={3}>
+              {ev.name}　{matchRoundLabel(s, m)}
+            </td>
+          </tr>
+          <tr>
+            <th>チーム名</th>
+            <td style={{ width: '37%', fontSize: '13pt', fontWeight: 700 }}>{entryName(s, me, pm)}</td>
+            <th style={{ width: '13%' }}>対戦相手</th>
+            <td>{entryName(s, opp, pm)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="of-body">
+        <table className="pt of-order">
+          <thead>
+            <tr>
+              <th style={{ width: '24%' }}>試合</th>
+              <th style={{ width: '12%' }}>番号</th>
+              <th>選手名</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ev.rubbers.flatMap((r, i) => {
+              const ids = m.rubbers[i]?.[side] ?? [];
+              const n = r.type === 'doubles' ? 2 : 1;
+              return Array.from({ length: n }, (_, k) => (
+                <tr key={`${i}-${k}`}>
+                  {k === 0 && <th rowSpan={n}>{r.label}</th>}
+                  <td style={{ textAlign: 'center' }}>{ids[k] ? numOf(ids[k]) : ''}</td>
+                  <td style={{ fontSize: '12pt' }}>{ids[k] ? pm.get(ids[k])?.name : ''}</td>
+                </tr>
+              ));
+            })}
+          </tbody>
+        </table>
+        <div className="of-members">
+          <div style={{ fontWeight: 700, marginBottom: '1mm' }}>登録選手</div>
+          {members.map((id, i) => (
+            <div key={id}>
+              {i + 1}. {pm.get(id)?.name}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="of-sign">
+        <span>提出時刻　　　時　　　分</span>
+        <span>監督署名 ＿＿＿＿＿＿＿＿＿＿＿＿</span>
+      </div>
+    </div>
   );
 }
