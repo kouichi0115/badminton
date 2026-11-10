@@ -1,0 +1,56 @@
+name: さくらのレンタルサーバーに公開
+
+on:
+  push:
+    branches: [main, ccr-84162cc0-86ujp5]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sakura
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 接続情報の確認
+        id: check
+        env:
+          SERVER: ${{ secrets.SAKURA_FTP_SERVER }}
+          USER: ${{ secrets.SAKURA_FTP_USER }}
+          PASS: ${{ secrets.SAKURA_FTP_PASSWORD }}
+        run: |
+          if [ -z "$SERVER" ] || [ -z "$USER" ] || [ -z "$PASS" ]; then
+            echo "::notice::さくらの接続情報（SAKURA_FTP_SERVER / SAKURA_FTP_USER / SAKURA_FTP_PASSWORD）が未設定のため、アップロードをスキップしました。"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.ready == 'true'
+        uses: actions/checkout@v4
+      - if: steps.check.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.check.outputs.ready == 'true'
+        run: npm ci
+      - if: steps.check.outputs.ready == 'true'
+        run: npm test
+      - if: steps.check.outputs.ready == 'true'
+        run: npm run build
+
+      - name: さくらへアップロード（FTPS）
+        if: steps.check.outputs.ready == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.SAKURA_FTP_SERVER }}
+          username: ${{ secrets.SAKURA_FTP_USER }}
+          password: ${{ secrets.SAKURA_FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./dist/
+          server-dir: ${{ vars.SAKURA_DIR || 'www/badminton/' }}

@@ -1,0 +1,9 @@
+# 画面（index.html）は毎回最新を読み込む
+<FilesMatch "\.html$">
+  Header set Cache-Control "no-cache"
+</FilesMatch>
+
+# JS・CSS はファイル名が更新ごとに変わるので長めにキャッシュ
+<FilesMatch "\.(js|css)$">
+  Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>

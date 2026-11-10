@@ -27,6 +27,29 @@
 データはブラウザ内に自動保存されます。別のパソコンへ移すときや控えには、大会設定の「バックアップを保存／読み込む」を使ってください。
 操作を間違えたときは、画面右上の ↶（Ctrl+Z）で元に戻せます。
 
+## さくらのレンタルサーバーで公開する
+
+GitHub に push すると、GitHub Actions（`.github/workflows/sakura.yml`）が自動でビルドし、さくらのレンタルサーバーへアップロードします。
+初期設定では `www/badminton/` に置かれ、`https://（初期ドメイン）/badminton/` で開けます。
+
+### 最初に1回だけ行う設定
+
+1. **さくらのコントロールパネルで確認する**（「サーバー情報」の画面）
+   - 初期ドメイン（例：`example.sakura.ne.jp`）
+   - FTPアカウント名（通常はアカウント名と同じ）
+   - サーバーパスワード
+2. **GitHub に登録する**：リポジトリの Settings → Secrets and variables → Actions → 「New repository secret」で次の3つを登録
+   | 名前 | 値 |
+   | --- | --- |
+   | `SAKURA_FTP_SERVER` | 初期ドメイン（例：`example.sakura.ne.jp`） |
+   | `SAKURA_FTP_USER` | FTPアカウント名 |
+   | `SAKURA_FTP_PASSWORD` | サーバーパスワード |
+3. 置き場所を変えたいときは、同じ画面の「Variables」タブで `SAKURA_DIR` を登録（例：`www/taikai/`。最後の `/` を忘れずに）
+4. Actions タブ →「さくらのレンタルサーバーに公開」→「Run workflow」で実行するか、もう一度 push する
+
+接続情報が未登録のあいだは、アップロードを飛ばして正常終了します。
+パスワードは GitHub 上で暗号化して保存され、ログにも表示されません。
+
 ## 開発
 
 ```bash
