@@ -48,6 +48,14 @@ GitHub に push すると、GitHub Actions（`.github/workflows/sakura.yml`）�
 4. Actions タブ →「さくらのレンタルサーバーに公開」→「Run workflow」で実行するか、もう一度 push する
 
 接続情報が未登録のあいだは、アップロードを飛ばして正常終了します。
+
+### 手動でアップロードする場合
+
+自動アップロードがうまくいかない場合（さくら側で海外からの接続を制限している場合など）は、手動でも公開できます。
+
+1. GitHub の Actions タブ →「さくらのレンタルサーバーに公開」→ 一番上の実行結果を開く
+2. 下の「Artifacts」にある `badminton-upload-files` をダウンロードして展開する
+3. さくらのコントロールパネルのファイルマネージャー（またはFTPソフト）で、`www` の中に `badminton` フォルダを作り、展開した中身（`index.html`、`assets` フォルダ、`.htaccess`）をすべてアップロードする
 パスワードは GitHub 上で暗号化して保存され、ログにも表示されません。
 
 ## 開発

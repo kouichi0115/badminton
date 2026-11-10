@@ -24,25 +24,29 @@ jobs:
           PASS: ${{ secrets.SAKURA_FTP_PASSWORD }}
         run: |
           if [ -z "$SERVER" ] || [ -z "$USER" ] || [ -z "$PASS" ]; then
-            echo "::notice::さくらの接続情報（SAKURA_FTP_SERVER / SAKURA_FTP_USER / SAKURA_FTP_PASSWORD）が未設定のため、アップロードをスキップしました。"
+            echo "::notice::さくらの接続情報が未設定のため、自動アップロードは行いません。ビルド済みファイル（badminton-upload-files）をダウンロードして手動でアップロードできます。"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - if: steps.check.outputs.ready == 'true'
-        uses: actions/checkout@v4
-      - if: steps.check.outputs.ready == 'true'
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - if: steps.check.outputs.ready == 'true'
-        run: npm ci
-      - if: steps.check.outputs.ready == 'true'
-        run: npm test
-      - if: steps.check.outputs.ready == 'true'
-        run: npm run build
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      # 手動でアップロードする人のために、ビルド済みファイルを ZIP で残す
+      - name: ビルド済みファイルを保存（手動アップロード用）
+        uses: actions/upload-artifact@v4
+        with:
+          name: badminton-upload-files
+          path: dist/
+          include-hidden-files: true
+          retention-days: 30
 
       - name: さくらへアップロード（SFTP、だめなら FTPS）
         if: steps.check.outputs.ready == 'true'
