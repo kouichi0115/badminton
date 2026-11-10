@@ -53,15 +53,28 @@ jobs:
           DIR: ${{ vars.SAKURA_DIR || 'www/badminton/' }}
         run: |
           sudo apt-get update -qq > /dev/null && sudo apt-get install -y -qq lftp > /dev/null
-          common="set net:max-retries 2; set net:timeout 30; set sftp:auto-confirm yes; set ssl:verify-certificate yes"
+          # よくある入力のずれを直す（前後の空白・改行、https://、末尾の /、アカウント名に付いたドメイン）
+          trim() { printf '%s' "$1" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
+          SERVER=$(trim "$SERVER" | sed -e 's#^[a-z]*://##' -e 's#/.*$##')
+          USER=$(trim "$USER" | sed -e 's/@.*$//' -e 's/\.sakura\.ne\.jp$//')
+          export LFTP_PASSWORD=$(printf '%s' "$LFTP_PASSWORD" | tr -d '\r\n')
+          # 値そのものは出さず、形だけ表示して点検できるようにする
+          echo "サーバー名: ${#SERVER}文字 / sakura.ne.jp で終わる: $([[ $SERVER == *.sakura.ne.jp ]] && echo はい || echo いいえ)"
+          echo "アカウント名: ${#USER}文字 / サーバー名の先頭と一致: $([[ $SERVER == "$USER".* ]] && echo はい || echo いいえ)"
+          echo "パスワード: ${#LFTP_PASSWORD}文字"
+          common="set net:max-retries 1; set net:timeout 30; set sftp:auto-confirm yes; set ssl:verify-certificate yes"
           upload() {
             lftp -c "$common; ${1:+$1;} open --env-password -u \"$USER\" $2; mkdir -p -f \"$DIR\"; mirror -R --verbose=1 --no-perms ./dist/ \"$DIR\""
           }
+          echo "--- SFTP で接続します"
           if upload "" "sftp://$SERVER"; then
             echo "SFTP でアップロードしました"
-          elif upload "set ftp:ssl-force true; set ftp:ssl-protect-data true" "ftp://$SERVER"; then
-            echo "FTPS でアップロードしました"
-          else
-            echo "::error::さくらに接続できませんでした。SAKURA_FTP_SERVER / SAKURA_FTP_USER / SAKURA_FTP_PASSWORD の値と、さくらのコントロールパネルの国外IPアドレスからのアクセス制限の設定を確認してください。"
-            exit 1
+            exit 0
           fi
+          echo "--- FTPS で接続します"
+          if upload "set ftp:ssl-force true; set ftp:ssl-protect-data true" "ftp://$SERVER"; then
+            echo "FTPS でアップロードしました"
+            exit 0
+          fi
+          echo "::error::さくらに接続できませんでした。アカウント名とサーバパスワードを確認してください。"
+          exit 1
