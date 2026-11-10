@@ -44,13 +44,24 @@ jobs:
       - if: steps.check.outputs.ready == 'true'
         run: npm run build
 
-      - name: さくらへアップロード（FTPS）
+      - name: さくらへアップロード（SFTP、だめなら FTPS）
         if: steps.check.outputs.ready == 'true'
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.SAKURA_FTP_SERVER }}
-          username: ${{ secrets.SAKURA_FTP_USER }}
-          password: ${{ secrets.SAKURA_FTP_PASSWORD }}
-          protocol: ftps
-          local-dir: ./dist/
-          server-dir: ${{ vars.SAKURA_DIR || 'www/badminton/' }}
+        env:
+          SERVER: ${{ secrets.SAKURA_FTP_SERVER }}
+          USER: ${{ secrets.SAKURA_FTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.SAKURA_FTP_PASSWORD }}
+          DIR: ${{ vars.SAKURA_DIR || 'www/badminton/' }}
+        run: |
+          sudo apt-get update -qq > /dev/null && sudo apt-get install -y -qq lftp > /dev/null
+          common="set net:max-retries 2; set net:timeout 30; set sftp:auto-confirm yes; set ssl:verify-certificate yes"
+          upload() {
+            lftp -c "$common; ${1:+$1;} open --env-password -u \"$USER\" $2; mkdir -p -f \"$DIR\"; mirror -R --verbose=1 --no-perms ./dist/ \"$DIR\""
+          }
+          if upload "" "sftp://$SERVER"; then
+            echo "SFTP でアップロードしました"
+          elif upload "set ftp:ssl-force true; set ftp:ssl-protect-data true" "ftp://$SERVER"; then
+            echo "FTPS でアップロードしました"
+          else
+            echo "::error::さくらに接続できませんでした。SAKURA_FTP_SERVER / SAKURA_FTP_USER / SAKURA_FTP_PASSWORD の値と、さくらのコントロールパネルの国外IPアドレスからのアクセス制限の設定を確認してください。"
+            exit 1
+          fi
